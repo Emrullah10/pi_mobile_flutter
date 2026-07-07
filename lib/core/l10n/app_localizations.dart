@@ -50,8 +50,22 @@ class AppLocalizations {
   String get acousticModel => isTurkish ? 'Akustik Model Ağırlığı' : 'Acoustic Model Weight';
   String get inputLexicon => isTurkish ? 'Giriş Dili' : 'Input Lexicon';
   String get transcriptRouting => isTurkish ? 'TRANSKRİPT YÖNLENDİRME' : 'TRANSCRIPT ROUTING';
-  String get emailTarget => isTurkish ? 'Hedef E-posta Adresi' : 'Primary Target Node (Email)';
-  String get emailHint => isTurkish ? 'Alıcı adresini girin...' : 'Enter recipient address...';
+  String get emailTarget => isTurkish ? 'Alıcı E-posta Adresleri' : 'Recipient Email Addresses';
+  String get emailHint => isTurkish ? 'Adres ekle ve ✓ bas...' : 'Add address and press ✓...';
+  String get emailInvalid => isTurkish ? 'Geçersiz e-posta adresi' : 'Invalid email address';
+  String get emailDuplicate => isTurkish ? 'Bu adres zaten ekli' : 'Address already added';
+  String get microphoneSource => isTurkish ? 'KAYIT KAYNAĞI' : 'RECORDING SOURCE';
+  String get phoneMic => isTurkish ? 'Telefon Mikrofonu' : 'Phone Microphone';
+  String get piMics => isTurkish ? 'Pi USB Mikrofonları' : 'Pi USB Microphones';
+  String get micRefresh => isTurkish ? 'Yenile' : 'Refresh';
+  String get micPermissionDenied => isTurkish ? 'Mikrofon izni gerekli' : 'Microphone permission required';
+  String get micUploading => isTurkish ? 'Pi\'ye yükleniyor...' : 'Uploading to Pi...';
+  String get storageTitle => isTurkish ? 'DEPOLAMA YÖNETİMİ' : 'STORAGE MANAGEMENT';
+  String get maxRecordings => isTurkish ? 'Maksimum Kayıt Sayısı' : 'Max Recordings';
+  String get maxRecordingDays => isTurkish ? 'Maksimum Saklama (gün)' : 'Max Retention (days)';
+  String get playRecording => isTurkish ? 'OYNAT' : 'PLAY';
+  String get audioNotFound => isTurkish ? 'Ses dosyası bulunamadı' : 'Audio file not found';
+  String get storageHint => isTurkish ? 'Bu sınırları aşan eski ses kayıtları otomatik silinir. Analiz metinleri korunur.' : 'Old recordings exceeding these limits are auto-deleted. Analysis texts are kept.';
   String get systemInstance => isTurkish ? 'SİSTEM ÖRNEĞİ' : 'SYSTEM INSTANCE';
   String get uptime => isTurkish ? 'Çalışma Süresi' : 'Uptime';
   String get reboot => isTurkish ? 'YENİDEN BAŞLAT' : 'INITIATE REBOOT CYCLE';
@@ -74,6 +88,14 @@ class AppLocalizations {
   String get modelMediumDesc => isTurkish
       ? 'En doğru model. Uzun toplantılar için önerilir. Pi\'yi ısıtır.'
       : 'Most accurate model. Recommended for long meetings. Heats the Pi.';
+
+  // ─── Server Config ───
+  String get serverConfig => isTurkish ? 'SUNUCU ADRESİ' : 'SERVER ADDRESS';
+  String get serverAddressHint => '192.168.1.39:3000';
+  String get serverSaved => isTurkish ? 'Adres kaydedildi. Yeniden bağlanılıyor...' : 'Address saved. Reconnecting...';
+  String get autoDiscover => isTurkish ? 'OTOMATİK BUL' : 'AUTO DISCOVER';
+  String get discoverFailed => isTurkish ? 'Pi ağda bulunamadı (whisperpi.local)' : 'Pi not found on network (whisperpi.local)';
+  String get discoverSuccess => isTurkish ? 'Pi bulundu: ' : 'Pi found: ';
 
   // ─── Analysis Detail ───
   String get transcription => isTurkish ? 'Transkripsiyon' : 'Transcription';

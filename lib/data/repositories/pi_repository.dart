@@ -89,6 +89,22 @@ class PiRepository {
     }
   }
 
+  Future<List<Map<String, String>>> getMicrophones() async {
+    try {
+      final json = await _apiService.get(ApiConstants.microphones);
+      final list = json['microphones'] as List<dynamic>? ?? [];
+      return list.map((e) => {
+        'id': (e['id'] as String?) ?? '',
+        'name': (e['name'] as String?) ?? '',
+      }).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  String getAudioUrl(String filename) =>
+      '${ApiConstants.baseUrl}${ApiConstants.audioFile(filename)}';
+
   Future<void> rebootPi() async {
     await _apiService.post(ApiConstants.reboot);
   }

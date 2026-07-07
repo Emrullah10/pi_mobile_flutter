@@ -1,4 +1,53 @@
 {
   "version": 1,
-  "bugs": []
+  "bugs": [
+    {
+      "id": "bug-001",
+      "timestamp": "2026-07-06",
+      "error_message": "Giriş yapılamadı — mDNS 'Pi bulundu' diyor ama login başarısız; backend curl ile 200 dönüyor, uygulamadan bağlanamıyor",
+      "file": "lib/core/constants/server_config.dart",
+      "root_cause": "_normalize'da port ekleme kontrolü 'uri.port == 0' idi. Uri.port, port belirtilmese bile HTTP şeması için 80 döndürür (0 değil), bu yüzden portsuz IP (192.168.1.8) girildiğinde :3000 hiç eklenmiyordu. Uygulama port 80'e bağlanmaya çalışıp başarısız oluyordu.",
+      "fix": "Port kontrolü 'uri.port == 0' yerine '!uri.hasPort' ile değiştirildi. hasPort, kaynak string'de açıkça :port var mı diye bakar, şema varsayılanına aldanmaz.",
+      "tags": ["server-config", "url-normalize", "login", "port", "mdns", "uri-parse"],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-07-06"
+    },
+    {
+      "id": "bug-002",
+      "timestamp": "2026-07-06",
+      "error_message": "Kullanıcılar sekmesine hızlı/seri tıklayınca birkaç kez geri atıyor (crash), sonunda giriyor",
+      "file": "lib/presentation/app_shell.dart",
+      "root_cause": "Bottom nav 'screens[_currentIndex]' ile çalışıyordu. Her setState'te _getScreens() yeni UserManagementScreen() instance üretiyor, initState tekrar çalışıp fetchUsers() çağırıyordu. fetchUsers içindeki _setLoading(true) senkron notifyListeners tetikliyor; hızlı tıklamada build sırasında yeniden-build fırtınası oluşup ekran pop ediyordu.",
+      "fix": "Body 'screens[_currentIndex]' yerine IndexedStack(index, children: screens) ile değiştirildi. Ekranlar bir kez oluşturulur, state korunur, initState yalnızca bir kez çalışır — tekrarlı fetchUsers ve crash önlenir.",
+      "tags": ["app-shell", "indexed-stack", "navigation", "setstate", "crash", "user-management", "initstate"],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-07-06"
+    },
+    {
+      "id": "bug-003",
+      "timestamp": "2026-07-06",
+      "error_message": "Kayıt oynatma çalışmıyor; MediaHTTPConnection.seekTo java.io.IOException, MediaPlayer Error (1,-2147483648), anında 'Playback completed'",
+      "file": "lib/data/services/audio_player_service.dart",
+      "root_cause": "İki katman: (1) flutter_sound startPlayer(fromURI: <http-url>) uzak WAV'ı stream ederken Android MediaPlayer seek yapamayıp IOException/Error(1,...) veriyordu. (2) ASIL NEDEN: /api/audio/:filename endpoint'i JWT 'auth' middleware ile korumalı; lokal indirme için eklenen http.get isteği token OLMADAN gidiyordu -> 401 -> her kayıtta (var olanlar dahil) 'ses bulunamadı'. Ayrıca bazı eski kayıtların WAV'ı Pi'de fiziksel olarak silinmiş (analiz metni kalmış) -> gerçekten 404.",
+      "fix": "WAV önce http.get ile telefonun geçici klasörüne indirilip lokal dosyadan çalınıyor (seek sorunu çözülür, hızlanır). İstek Authorization: Bearer <token> header'ı ile gidiyor (token SharedPreferences 'auth_token'dan). İndirilen içerik RIFF header ile doğrulanıyor; 401/404/JSON gelirse 'ses bulunamadı' snackbar'ı. Oynat butonuna basınca anında buffering spinner.",
+      "tags": ["audio", "flutter-sound", "wav", "http-stream", "seek", "mediaplayer", "cache", "404"],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-07-06"
+    },
+    {
+      "id": "bug-004",
+      "timestamp": "2026-07-07",
+      "error_message": "Whisper işleme 'hata veriyor' — özetler boş/'Giriş:' şablonu; Pi'de: Kategorizasyon Hatası: 401 invalid authentication credentials ACCESS_TOKEN_TYPE_UNSUPPORTED",
+      "file": "Pi: ~/projects/whisper/whisper2/transkript/.env",
+      "root_cause": "GEMINI_API_KEY 'AQ.Ab8...' formatında — bu bir OAuth access token, Gemini API anahtarı değil. Geçerli anahtarlar 'AIza...' ile başlar. Whisper + e-posta çalışıyor; sadece Gemini analiz adımı 401 alıp 'Genel şablon' fallback'ine düşüyordu. Teşhis zor oldu çünkü backend transkript_folder.py'yi detached + stdio:'ignore' spawn ettiği için Python hatası hiçbir loga düşmüyor.",
+      "fix": "aistudio.google.com/apikey'den yeni AIza... anahtarı alınıp .env'e yazıldı (sed ile). Not: backend spawn'ına stdout/stderr log dosyası eklemek gelecekte teşhisi kolaylaştırır.",
+      "tags": ["gemini", "api-key", "401", "pi-backend", "env", "whisper-pipeline", "stdio-ignore"],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-07-07"
+    }
+  ]
 }
