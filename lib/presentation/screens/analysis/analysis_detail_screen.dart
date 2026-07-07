@@ -5,14 +5,81 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/models/analysis_result.dart';
+import '../../../data/services/audio_player_service.dart';
 import '../../../core/l10n/app_localizations.dart';
 import '../../viewmodels/app_viewmodel.dart';
 import '../../widgets/glass_panel.dart';
 import '../../widgets/speaker_badge.dart';
 
-class AnalysisDetailScreen extends StatelessWidget {
+class AnalysisDetailScreen extends StatefulWidget {
   final AnalysisResult result;
   const AnalysisDetailScreen({super.key, required this.result});
+
+  @override
+  State<AnalysisDetailScreen> createState() => _AnalysisDetailScreenState();
+}
+
+class _AnalysisDetailScreenState extends State<AnalysisDetailScreen> {
+  final _player = AudioPlayerService();
+  bool _isPlaying = false;
+  bool _isPaused = false;
+  bool _buffering = false;
+  Duration _pos = Duration.zero;
+  late Duration _dur;
+
+  @override
+  void initState() {
+    super.initState();
+    _dur = widget.result.duration;
+  }
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  Future<void> _togglePlay() async {
+    final vm = context.read<AppViewModel>();
+    final url = vm.getAudioUrl(widget.result.filename);
+
+    if (_isPlaying) {
+      await _player.pause();
+      setState(() { _isPlaying = false; _isPaused = true; });
+    } else if (_isPaused) {
+      await _player.resume();
+      setState(() { _isPlaying = true; _isPaused = false; });
+    } else {
+      // Butona basar basmaz anında görsel tepki: buffering spinner göster.
+      // Uzak WAV Pi'den yüklendiği için startPlayer birkaç saniye sürebilir;
+      // bu olmadan kullanıcı tepki alamayıp tekrar tekrar basıyordu.
+      setState(() => _buffering = true);
+      try {
+        await _player.play(
+          url,
+          onProgress: (pos, dur) {
+            if (mounted) setState(() { _pos = pos; _dur = dur; });
+          },
+          onFinished: () {
+            if (mounted) setState(() { _isPlaying = false; _isPaused = false; _pos = Duration.zero; _dur = widget.result.duration; });
+          },
+        );
+        if (mounted) setState(() { _isPlaying = true; _isPaused = false; _buffering = false; });
+      } catch (_) {
+        if (mounted) {
+          setState(() => _buffering = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(vm.l10n.audioNotFound), backgroundColor: AppColors.surfaceContainerHighest),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _stop() async {
+    await _player.stop();
+    if (mounted) setState(() { _isPlaying = false; _isPaused = false; _pos = Duration.zero; _dur = widget.result.duration; });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -38,10 +105,11 @@ class AnalysisDetailScreen extends StatelessWidget {
           child: Builder(builder: (context) {
             final l = context.read<AppViewModel>().l10n;
             return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              _buildMetadata(l), const SizedBox(height: 32),
+              _buildMetadata(l), const SizedBox(height: 24),
+              _buildAudioPlayer(l), const SizedBox(height: 24),
               _buildTranscription(l), const SizedBox(height: 24),
               _buildAISummary(l), const SizedBox(height: 16),
-              if (result.emailDeliveryStatus != null) _buildDelivery(l),
+              if (widget.result.emailDeliveryStatus != null) _buildDelivery(l),
             ]);
           }),
         ),
@@ -49,20 +117,85 @@ class AnalysisDetailScreen extends StatelessWidget {
     );
   }
 
+  Widget _buildAudioPlayer(AppLocalizations l) {
+    final progress = _dur.inMilliseconds > 0 ? _pos.inMilliseconds / _dur.inMilliseconds : 0.0;
+    final posLabel = _formatDur(_pos);
+    final durLabel = _formatDur(_dur);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.outlineVariant),
+      ),
+      child: Row(children: [
+        GestureDetector(
+          onTap: _buffering ? null : _togglePlay,
+          child: Container(
+            width: 40, height: 40,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: AppColors.primaryContainer.withValues(alpha: 0.15), border: Border.all(color: AppColors.primaryContainer)),
+            child: _buffering
+                ? const Padding(
+                    padding: EdgeInsets.all(11),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryContainer),
+                    ),
+                  )
+                : Icon(_isPlaying ? Icons.pause : Icons.play_arrow, color: AppColors.primaryContainer, size: 20),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                value: progress.clamp(0.0, 1.0),
+                backgroundColor: AppColors.surfaceContainerHigh,
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryContainer),
+                minHeight: 3,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              Text(posLabel, style: AppTypography.mono.copyWith(color: AppColors.onSurfaceVariant, fontSize: 11)),
+              Text(durLabel, style: AppTypography.mono.copyWith(color: AppColors.onSurfaceVariant, fontSize: 11)),
+            ]),
+          ]),
+        ),
+        if (_isPlaying || _isPaused) ...[
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: _stop,
+            child: Icon(Icons.stop, color: AppColors.onSurfaceVariant, size: 20),
+          ),
+        ],
+      ]),
+    );
+  }
+
+  String _formatDur(Duration d) {
+    final m = d.inMinutes.toString().padLeft(2, '0');
+    final s = (d.inSeconds % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
   Widget _buildMetadata(AppLocalizations l) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         const Icon(Icons.memory, size: 18, color: AppColors.primaryFixedDim),
         const SizedBox(width: 8),
-        Text('RECORDING_${result.id.length > 3 ? result.id.substring(0, 3).toUpperCase() : result.id.toUpperCase()}', style: AppTypography.labelCaps.copyWith(color: AppColors.primaryFixedDim, letterSpacing: 2.4)),
+        Text('RECORDING_${widget.result.id.length > 3 ? widget.result.id.substring(0, 3).toUpperCase() : widget.result.id.toUpperCase()}', style: AppTypography.labelCaps.copyWith(color: AppColors.primaryFixedDim, letterSpacing: 2.4)),
       ]),
       const SizedBox(height: 12),
-      Text(result.title, style: AppTypography.h1.copyWith(color: AppColors.onBackground)),
+      Text(widget.result.title, style: AppTypography.h1.copyWith(color: AppColors.onBackground)),
       const SizedBox(height: 12),
       Wrap(spacing: 16, runSpacing: 8, children: [
-        _meta(Icons.calendar_today, Formatters.formatDateFull(result.date)),
-        _meta(Icons.schedule, Formatters.formatDurationShort(result.duration)),
-        _meta(Icons.group, '${result.participantCount} ${l.participants}'),
+        _meta(Icons.calendar_today, Formatters.formatDateFull(widget.result.date)),
+        _meta(Icons.schedule, Formatters.formatDurationShort(widget.result.duration)),
+        _meta(Icons.group, '${widget.result.participantCount} ${l.participants}'),
       ]),
     ]);
   }
@@ -84,11 +217,11 @@ class AnalysisDetailScreen extends StatelessWidget {
         constraints: const BoxConstraints(maxHeight: 400),
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(color: AppColors.surfaceContainerLow, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.outlineVariant)),
-        child: result.transcript.isEmpty
+        child: widget.result.transcript.isEmpty
             ? Center(child: Text(l.transcriptPending, style: AppTypography.bodyMd.copyWith(color: AppColors.onSurfaceVariant)))
-            : ListView.separated(shrinkWrap: true, itemCount: result.transcript.length, separatorBuilder: (c, idx) => const SizedBox(height: 16),
+            : ListView.separated(shrinkWrap: true, itemCount: widget.result.transcript.length, separatorBuilder: (c, idx) => const SizedBox(height: 16),
                 itemBuilder: (_, i) {
-                  final b = result.transcript[i];
+                  final b = widget.result.transcript[i];
                   final sNum = int.tryParse(b.speaker.replaceAll(RegExp(r'[^0-9]'), '')) ?? i;
                   return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Row(children: [SpeakerBadge(speaker: b.speaker, speakerIndex: sNum), const SizedBox(width: 8), Text(Formatters.formatTimestamp(b.timestamp), style: AppTypography.mono.copyWith(color: AppColors.onSurfaceVariant))]),
@@ -105,14 +238,14 @@ class AnalysisDetailScreen extends StatelessWidget {
       Row(children: [const Icon(Icons.auto_awesome, color: AppColors.primaryFixedDim, size: 24), const SizedBox(width: 8), Text(l.aiSummary, style: AppTypography.h3.copyWith(color: AppColors.primaryFixedDim))]),
       const SizedBox(height: 16),
       Text(
-        result.summary.isNotEmpty ? result.summary : l.noSummary,
+        widget.result.summary.isNotEmpty ? widget.result.summary : l.noSummary,
         style: AppTypography.bodyMd.copyWith(color: AppColors.onSurface),
       ),
-      if (result.actionItems.isNotEmpty) ...[
+      if (widget.result.actionItems.isNotEmpty) ...[
         const SizedBox(height: 16),
         Text(l.actionItems, style: AppTypography.labelCaps.copyWith(color: AppColors.primaryFixedDim, letterSpacing: 1.5)),
         const SizedBox(height: 8),
-        ...result.actionItems.map((item) => Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        ...widget.result.actionItems.map((item) => Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const Padding(padding: EdgeInsets.only(top: 2), child: Icon(Icons.radio_button_checked, size: 16, color: AppColors.tertiaryFixedDim)),
           const SizedBox(width: 8), Expanded(child: Text(item, style: AppTypography.bodyMd.copyWith(color: AppColors.onSurface))),
         ]))),
@@ -129,7 +262,7 @@ class AnalysisDetailScreen extends StatelessWidget {
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(l.deliveryStatus, style: AppTypography.labelCaps.copyWith(color: AppColors.onSurfaceVariant)),
           const SizedBox(height: 2),
-          Text(result.emailDeliveryStatus ?? '', style: AppTypography.bodyMd.copyWith(color: AppColors.onBackground)),
+          Text(widget.result.emailDeliveryStatus ?? '', style: AppTypography.bodyMd.copyWith(color: AppColors.onBackground)),
         ])),
         const Icon(Icons.check_circle, color: AppColors.primaryContainer, size: 24),
       ]));

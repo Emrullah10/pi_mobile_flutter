@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../core/l10n/app_localizations.dart';
 import '../../data/models/system_status.dart';
 import '../../data/models/analysis_result.dart';
 import '../../data/models/system_info.dart';
 import '../../data/repositories/pi_repository.dart';
+import '../../data/services/phone_recorder_service.dart';
 
 /// Main app-wide state manager
 /// Handles recording state, system status, and history
@@ -20,8 +22,19 @@ class AppViewModel extends ChangeNotifier {
 
   // ─── Settings ───
   String settingsEmail = '';
+  List<String> settingsEmails = [];
   String settingsModel = 'medium';
   String settingsLanguage = 'auto';
+  String selectedMicrophone = 'phone';
+  List<Map<String, String>> availableMicrophones = [];
+  int settingsMaxRecordings = 20;
+  int settingsMaxRecordingDays = 14;
+
+  // ─── Phone Recorder ───
+  final PhoneRecorderService _phoneRecorder = PhoneRecorderService();
+  bool _isPhoneRecording = false;
+  String? _phoneRecordError;
+  String? get phoneRecordError => _phoneRecordError;
 
   // ─── Locale ───
   bool isTurkish = true;
@@ -54,18 +67,19 @@ class AppViewModel extends ChangeNotifier {
   }
 
   // ─── Getters ───
+  String getAudioUrl(String filename) => _repository.getAudioUrl(filename);
   SystemStatus get status => _status;
   List<AnalysisResult> get history => _history;
   bool get isLoading => _isLoading;
   String? get error => _error;
-  bool get isRecording => _status.isRecording;
+  bool get isRecording => _isPhoneRecording || _status.isRecording;
   bool get isOnline => _status.online;
   Duration get recordingDuration => _recordingDuration;
   SystemInfo get systemInfo => _systemInfo;
 
   // ─── Initialization ───
   Future<void> _init() async {
-    await Future.wait([refreshStatus(), refreshHistory(), refreshSystemInfo(), refreshSettings()]);
+    await Future.wait([refreshStatus(), refreshHistory(), refreshSystemInfo(), refreshSettings(), refreshMicrophones()]);
     _startStatusPolling();
     _startSystemInfoPolling();
   }
@@ -84,6 +98,11 @@ class AppViewModel extends ChangeNotifier {
       const Duration(seconds: 30),
       (_) => refreshSystemInfo(),
     );
+  }
+
+  // ─── Reconnect (adres değişince yeniden bağlan) ───
+  Future<void> reconnect() async {
+    await Future.wait([refreshStatus(), refreshHistory(), refreshSystemInfo(), refreshSettings(), refreshMicrophones()]);
   }
 
   // ─── Status ───
@@ -158,35 +177,104 @@ class AppViewModel extends ChangeNotifier {
   Future<void> refreshSettings() async {
     final data = await _repository.getSettings();
     if (data.isNotEmpty) {
-      settingsEmail = data['email'] ?? '';
+      final rawEmails = data['emails'];
+      if (rawEmails is List && rawEmails.isNotEmpty) {
+        settingsEmails = rawEmails.cast<String>();
+      } else if (data['email'] != null && (data['email'] as String).isNotEmpty) {
+        settingsEmails = [data['email'] as String];
+      } else {
+        settingsEmails = [];
+      }
+      settingsEmail = settingsEmails.isNotEmpty ? settingsEmails.first : '';
       settingsModel = data['model'] ?? 'medium';
       settingsLanguage = data['language'] ?? 'auto';
+      selectedMicrophone = data['microphone'] ?? 'phone';
+      settingsMaxRecordings = (data['maxRecordings'] as num?)?.toInt() ?? 20;
+      settingsMaxRecordingDays = (data['maxRecordingDays'] as num?)?.toInt() ?? 14;
       notifyListeners();
     }
   }
 
-  Future<void> updateSettings({String? email, String? model, String? language}) async {
+  Future<void> refreshMicrophones() async {
+    final piList = await _repository.getMicrophones();
+    availableMicrophones = [
+      {'id': 'phone', 'name': 'Telefon Mikrofonu'},
+      ...piList,
+    ];
+    // Seçili mikrofon listede yoksa telefona dön
+    if (!availableMicrophones.any((m) => m['id'] == selectedMicrophone)) {
+      selectedMicrophone = 'phone';
+    }
+    notifyListeners();
+  }
+
+  Future<void> updateSettings({List<String>? emails, String? model, String? language, String? microphone, int? maxRecordings, int? maxRecordingDays}) async {
     final body = <String, dynamic>{};
-    if (email != null) { settingsEmail = email; body['email'] = email; }
+    if (emails != null) {
+      settingsEmails = emails;
+      settingsEmail = emails.isNotEmpty ? emails.first : '';
+      body['emails'] = emails;
+    }
     if (model != null) { settingsModel = model; body['model'] = model; }
     if (language != null) { settingsLanguage = language; body['language'] = language; }
+    if (microphone != null) { selectedMicrophone = microphone; body['microphone'] = microphone; }
+    if (maxRecordings != null) { settingsMaxRecordings = maxRecordings; body['maxRecordings'] = maxRecordings; }
+    if (maxRecordingDays != null) { settingsMaxRecordingDays = maxRecordingDays; body['maxRecordingDays'] = maxRecordingDays; }
     notifyListeners();
     await _repository.saveSettings(body);
   }
 
+  void addEmail(String email) {
+    final trimmed = email.trim();
+    if (!settingsEmails.contains(trimmed)) {
+      updateSettings(emails: [...settingsEmails, trimmed]);
+    }
+  }
+
+  void removeEmail(String email) {
+    updateSettings(emails: settingsEmails.where((e) => e != email).toList());
+  }
+
   // ─── Recording Controls ───
-  Future<void> startRecording() async {
-    final filename = await _repository.startRecording();
-    if (filename != null) {
-      _stopwatch = Stopwatch()..start();
-      _recordingTimer = Timer.periodic(
-        const Duration(milliseconds: 100),
-        (_) {
-          _recordingDuration = _stopwatch!.elapsed;
-          notifyListeners();
-        },
-      );
-      await refreshStatus();
+  Future<bool> startRecording() async {
+    if (selectedMicrophone == 'phone') {
+      final status = await Permission.microphone.request();
+      if (!status.isGranted) {
+        _phoneRecordError = 'permission_denied';
+        notifyListeners();
+        return false;
+      }
+      _phoneRecordError = null;
+      final ok = await _phoneRecorder.startRecording();
+      if (ok) {
+        _isPhoneRecording = true;
+        _stopwatch = Stopwatch()..start();
+        _recordingTimer = Timer.periodic(
+          const Duration(milliseconds: 100),
+          (_) {
+            _recordingDuration = _stopwatch!.elapsed;
+            notifyListeners();
+          },
+        );
+        _status = SystemStatus(online: _status.online, isRecording: true, timestamp: DateTime.now());
+        notifyListeners();
+      }
+      return ok;
+    } else {
+      final filename = await _repository.startRecording();
+      if (filename != null) {
+        _stopwatch = Stopwatch()..start();
+        _recordingTimer = Timer.periodic(
+          const Duration(milliseconds: 100),
+          (_) {
+            _recordingDuration = _stopwatch!.elapsed;
+            notifyListeners();
+          },
+        );
+        await refreshStatus();
+        return true;
+      }
+      return false;
     }
   }
 
@@ -195,10 +283,31 @@ class AppViewModel extends ChangeNotifier {
     _stopwatch?.stop();
     _recordingDuration = Duration.zero;
 
-    final success = await _repository.stopRecording(customName: customName);
-    if (success) {
-      await refreshStatus();
-      _startProcessPolling();
+    if (_isPhoneRecording) {
+      _isPhoneRecording = false;
+      final file = await _phoneRecorder.stopRecording();
+      _status = SystemStatus(online: _status.online, isRecording: false, timestamp: DateTime.now());
+      notifyListeners();
+      if (file != null) {
+        processState = 'processing';
+        processStep = 'upload';
+        processProgress = 0;
+        notifyListeners();
+        final uploaded = await _phoneRecorder.uploadRecording(file, customName: customName);
+        if (uploaded) {
+          _startProcessPolling();
+        } else {
+          processState = 'error';
+          processStep = 'upload_failed';
+          notifyListeners();
+        }
+      }
+    } else {
+      final success = await _repository.stopRecording(customName: customName);
+      if (success) {
+        await refreshStatus();
+        _startProcessPolling();
+      }
     }
   }
 
@@ -221,6 +330,7 @@ class AppViewModel extends ChangeNotifier {
     _systemInfoPollTimer?.cancel();
     _recordingTimer?.cancel();
     _stopwatch?.stop();
+    _phoneRecorder.dispose();
     _repository.dispose();
     super.dispose();
   }

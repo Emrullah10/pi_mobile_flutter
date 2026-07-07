@@ -1,24 +1,38 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/constants/api_constants.dart';
 
 /// Low-level HTTP client for Raspberry Pi backend
 class ApiService {
   final http.Client _client;
-  final String _baseUrl;
+  final String? _overrideUrl;
+
+  String get _baseUrl => _overrideUrl ?? ApiConstants.baseUrl;
 
   ApiService({
     http.Client? client,
     String? baseUrl,
   })  : _client = client ?? http.Client(),
-        _baseUrl = baseUrl ?? ApiConstants.baseUrl;
+        _overrideUrl = baseUrl;
+
+  // Ortak başlıkları (Header) ve JWT Token'ı hazırlayan yardımcı metot
+  Future<Map<String, String>> _getHeaders() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('auth_token');
+    return {
+      'Content-Type': 'application/json',
+      if (token != null) 'Authorization': 'Bearer $token',
+    };
+  }
 
   /// GET request
   Future<Map<String, dynamic>> get(String endpoint) async {
     try {
+      final headers = await _getHeaders();
       final response = await _client
-          .get(Uri.parse('$_baseUrl$endpoint'))
+          .get(Uri.parse('$_baseUrl$endpoint'), headers: headers)
           .timeout(const Duration(seconds: 3));
 
       if (response.statusCode == 200) {
@@ -39,8 +53,9 @@ class ApiService {
   /// GET request returning a list
   Future<List<dynamic>> getList(String endpoint) async {
     try {
+      final headers = await _getHeaders();
       final response = await _client
-          .get(Uri.parse('$_baseUrl$endpoint'))
+          .get(Uri.parse('$_baseUrl$endpoint'), headers: headers)
           .timeout(const Duration(seconds: 3));
 
       if (response.statusCode == 200) {
@@ -64,10 +79,11 @@ class ApiService {
     Map<String, dynamic>? body,
   }) async {
     try {
+      final headers = await _getHeaders();
       final response = await _client
           .post(
             Uri.parse('$_baseUrl$endpoint'),
-            headers: {'Content-Type': 'application/json'},
+            headers: headers,
             body: body != null ? jsonEncode(body) : null,
           )
           .timeout(const Duration(seconds: 3));

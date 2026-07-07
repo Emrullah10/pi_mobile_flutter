@@ -9,11 +9,16 @@ import '../../widgets/status_indicator.dart';
 import '../../widgets/record_orb.dart';
 import '../../widgets/tag_chip.dart';
 
+import '../../viewmodels/auth_viewmodel.dart';
+
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final authVm = context.watch<AuthViewModel>();
+    final isAdmin = authVm.isAdmin;
+
     return Consumer<AppViewModel>(
       builder: (context, vm, _) {
         return SingleChildScrollView(
@@ -64,57 +69,83 @@ class DashboardScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 40),
-              Text(
-                Formatters.formatDuration(vm.recordingDuration),
-                style: AppTypography.h1.copyWith(
-                  color: AppColors.primaryContainer.withValues(alpha: 0.8),
-                  fontFeatures: const [FontFeature.tabularFigures()],
+              if (isAdmin) ...[
+                Text(
+                  Formatters.formatDuration(vm.recordingDuration),
+                  style: AppTypography.h1.copyWith(
+                    color: AppColors.primaryContainer.withValues(alpha: 0.8),
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 32),
-              RecordOrb(
-                isRecording: vm.isRecording,
-                onTap: () async {
-                  if (vm.isRecording) {
-                    final controller = TextEditingController();
-                    final name = await showDialog<String>(
-                      context: context,
-                      builder: (_) => AlertDialog(
-                        backgroundColor: AppColors.surfaceContainer,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        title: Text(vm.l10n.recordingName, style: AppTypography.labelCaps.copyWith(color: AppColors.primary, letterSpacing: 2)),
-                        content: TextField(
-                          controller: controller,
-                          autofocus: true,
-                          style: AppTypography.bodyMd.copyWith(color: AppColors.onSurface),
-                          decoration: InputDecoration(
-                            hintText: vm.l10n.recordingNameHint,
-                            hintStyle: AppTypography.bodyMd.copyWith(color: AppColors.onSurfaceVariant),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppColors.outlineVariant)),
-                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppColors.primary)),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                const SizedBox(height: 32),
+                RecordOrb(
+                  isRecording: vm.isRecording,
+                  onTap: () async {
+                    if (vm.isRecording) {
+                      final controller = TextEditingController();
+                      final name = await showDialog<String>(
+                        context: context,
+                        builder: (_) => AlertDialog(
+                          backgroundColor: AppColors.surfaceContainer,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          title: Text(vm.l10n.recordingName, style: AppTypography.labelCaps.copyWith(color: AppColors.primary, letterSpacing: 2)),
+                          content: TextField(
+                            controller: controller,
+                            autofocus: true,
+                            style: AppTypography.bodyMd.copyWith(color: AppColors.onSurface),
+                            decoration: InputDecoration(
+                              hintText: vm.l10n.recordingNameHint,
+                              hintStyle: AppTypography.bodyMd.copyWith(color: AppColors.onSurfaceVariant),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppColors.outlineVariant)),
+                              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppColors.primary)),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            ),
                           ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, ''),
+                              child: Text(vm.l10n.skip, style: AppTypography.labelCaps.copyWith(color: AppColors.onSurfaceVariant)),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, controller.text.trim()),
+                              child: Text(vm.l10n.stop, style: AppTypography.labelCaps.copyWith(color: AppColors.primary)),
+                            ),
+                          ],
                         ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, ''),
-                            child: Text(vm.l10n.skip, style: AppTypography.labelCaps.copyWith(color: AppColors.onSurfaceVariant)),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, controller.text.trim()),
-                            child: Text(vm.l10n.stop, style: AppTypography.labelCaps.copyWith(color: AppColors.primary)),
-                          ),
-                        ],
-                      ),
-                    );
-                    if (name != null) {
-                      await vm.toggleRecording(customName: name.isEmpty ? null : name);
+                      );
+                      if (name != null) {
+                        await vm.toggleRecording(customName: name.isEmpty ? null : name);
+                      }
+                    } else {
+                      await vm.toggleRecording();
                     }
-                  } else {
-                    await vm.toggleRecording();
-                  }
-                },
-              ),
+                  },
+                ),
+              ] else ...[
+                const SizedBox(height: 24),
+                GlassPanel(
+                  borderColor: AppColors.outlineVariant.withValues(alpha: 0.2),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.lock_outline, size: 48, color: AppColors.outline),
+                      const SizedBox(height: 16),
+                      Text(
+                        vm.isTurkish ? 'SALT OKUNUR MOD' : 'READ-ONLY MODE',
+                        style: AppTypography.labelCaps.copyWith(color: AppColors.outline, letterSpacing: 2),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        vm.isTurkish 
+                            ? 'Ses kaydetme ve analiz başlatma yetkiniz bulunmamaktadır. Geçmiş analizleri inceleyebilir ve ses kayıtlarını dinleyebilirsiniz.' 
+                            : 'You do not have permission to record or analyze audio. You can view and listen to past analyses.',
+                        style: AppTypography.bodyMd.copyWith(color: AppColors.onSurfaceVariant),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
               const SizedBox(height: 24),
               _ProcessStatusBar(vm: vm),
               const SizedBox(height: 24),
