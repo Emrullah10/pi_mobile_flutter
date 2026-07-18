@@ -1,16 +1,14 @@
-# mobile_flutter
+# pi_mobile_flutter
 
-A new Flutter project.
+Cross-platform mobile app built with **Flutter & Dart**, featuring user authentication and audio recording services. Targets Android, iOS, desktop and web from a single codebase.
 
-## Getting Started
+## Tech Stack
 
-This project is a starting point for a Flutter application.
+Flutter, Dart. Structured with a core navigation setup and service-based architecture (authentication, audio recording).
 
-A few resources to get you started if this is your first Flutter project:
+## Getting started
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```bash
+flutter pub get
+flutter run
+```
