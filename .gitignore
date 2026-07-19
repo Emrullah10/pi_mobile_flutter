@@ -32,6 +32,8 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+.fvm/
+.fvmrc
 
 # Symbolication related
 app.*.symbols
@@ -43,3 +45,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Riverpod / codegen (only relevant if build_runner is introduced later)
+*.g.dart.bak
